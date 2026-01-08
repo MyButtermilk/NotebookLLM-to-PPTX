@@ -53,6 +53,10 @@ export default function UploadZone() {
     <div className="max-w-3xl mx-auto">
       <motion.div
         {...getRootProps()}
+        onAnimationStart={() => {}}
+        onDragStart={() => {}}
+        onDragEnd={() => {}}
+        onDrag={() => {}}
         whileHover={{ scale: 1.01 }}
         whileTap={{ scale: 0.99 }}
         className={`

@@ -14,8 +14,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from server.db import init_db, get_db
-from server.models import Job, JobStatus, ConversionSettings
+from server.db import init_db, get_db, Job, JobStatus
+from server.models import ConversionSettings
 from server.tasks import process_pdf_task
 from server.websocket_manager import ConnectionManager
 
