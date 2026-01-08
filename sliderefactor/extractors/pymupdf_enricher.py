@@ -6,8 +6,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import fitz
-
 from sliderefactor.models import BackgroundConfig, SlideGraph, BBox
 
 
@@ -19,6 +17,8 @@ class PyMuPDFEnricher:
 
     def enrich(self, pdf_path: Path, slide_graph: SlideGraph, images_dir: Path) -> None:
         """Populate font metadata and background images on SlideGraph slides."""
+        import fitz
+
         pdf_path = Path(pdf_path)
         images_dir = Path(images_dir)
         images_dir.mkdir(parents=True, exist_ok=True)
@@ -33,10 +33,12 @@ class PyMuPDFEnricher:
                 page_area = page.rect.width * page.rect.height
 
                 spans = self._collect_text_spans(page_dict)
+                scale_x, scale_y = self._scale_factors(page, slide)
                 for block in slide.blocks:
                     if block.type != "text":
                         continue
-                    font_name, font_size = self._match_font(block.bbox, spans)
+                    block_bbox = self._scale_bbox(block.bbox, scale_x, scale_y)
+                    font_name, font_size = self._match_font(block_bbox, spans)
                     if font_name:
                         block.metadata["font_name"] = font_name
                     if font_size:
@@ -134,6 +136,21 @@ class PyMuPDFEnricher:
         image_path = images_dir / image_ref
         image_path.write_bytes(image_bytes)
         return image_ref
+
+    @staticmethod
+    def _scale_factors(page, slide) -> Tuple[float, float]:
+        return page.rect.width / slide.width_px, page.rect.height / slide.height_px
+
+    @staticmethod
+    def _scale_bbox(bbox: BBox, scale_x: float, scale_y: float) -> BBox:
+        return BBox(
+            coords=[
+                bbox.x0 * scale_x,
+                bbox.y0 * scale_y,
+                bbox.x1 * scale_x,
+                bbox.y1 * scale_y,
+            ]
+        )
 
     @staticmethod
     def _bbox_area(bbox: List[float]) -> float:
