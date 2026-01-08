@@ -28,9 +28,31 @@ Transform NotebookLLM slide exports into fully editable PowerPoint presentations
 
 ## 🚀 Quick Start
 
-**TL;DR**: See [QUICKSTART.md](QUICKSTART.md) for 5-minute setup guide.
+### 🪟 Windows Users (One-Click Launch)
 
-### Web Interface (Recommended)
+**Easiest way to get started:**
+
+1. **Download the repository**
+2. **Double-click `start.bat`** (or right-click `start.ps1` → "Run with PowerShell")
+3. **Add your API keys** when prompted
+4. **Done!** SlideRefactor opens automatically
+
+The launcher will:
+- ✅ Check prerequisites (Python, Node.js)
+- ✅ Install all dependencies automatically
+- ✅ Start both servers
+- ✅ Open your browser
+
+See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows instructions.
+
+### 🐧 Mac/Linux Users
+
+**Option 1: Python Launcher (Recommended)**
+```bash
+python launcher.py
+```
+
+**Option 2: Manual Setup**
 
 ```bash
 # 1. Install dependencies
@@ -52,6 +74,11 @@ npm run dev
 ```
 
 Open `http://localhost:3001` in your browser 🎉
+
+### 📚 More Resources
+
+- **[QUICKSTART.md](QUICKSTART.md)** - 5-minute setup guide
+- **[WINDOWS_SETUP.md](WINDOWS_SETUP.md)** - Windows-specific instructions
 
 ### Command Line Interface
 

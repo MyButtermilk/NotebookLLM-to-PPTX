@@ -4,7 +4,38 @@ Get up and running with SlideRefactor in 5 minutes.
 
 ## 🚀 Quick Start
 
-### 1. Set Up API Keys
+### 🪟 Windows: One-Click Launch
+
+**The easiest way:**
+
+1. **Download** the repository
+2. **Double-click** `start.bat` (or run `start.ps1`)
+3. **Add API keys** when prompted
+4. **Use SlideRefactor!**
+
+Everything is automatic! See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for details.
+
+---
+
+### 🐧 Mac/Linux: Python Launcher
+
+**One command:**
+
+```bash
+python launcher.py
+```
+
+The launcher will:
+- Check prerequisites
+- Install dependencies
+- Start both servers
+- Open your browser
+
+---
+
+### ⚙️ Manual Setup (All Platforms)
+
+#### 1. Set Up API Keys
 
 ```bash
 # Copy environment file
@@ -15,7 +46,7 @@ DATALAB_API_KEY=your_datalab_key_here
 ANTHROPIC_API_KEY=your_anthropic_key_here
 ```
 
-### 2. Install Dependencies
+#### 2. Install Dependencies
 
 ```bash
 # Backend (Python)
@@ -28,7 +59,7 @@ npm install
 cd ..
 ```
 
-### 3. Start the Backend Server
+#### 3. Start the Backend Server
 
 ```bash
 # From project root
@@ -38,7 +69,7 @@ python -m uvicorn main:app --reload --port 8000
 
 The backend API will be available at `http://localhost:8000`.
 
-### 4. Start the Frontend
+#### 4. Start the Frontend
 
 ```bash
 # In a new terminal, from project root
@@ -47,6 +78,8 @@ npm run dev
 ```
 
 The web interface will be available at `http://localhost:3001`.
+
+---
 
 ### 5. Convert Your First PDF
 
