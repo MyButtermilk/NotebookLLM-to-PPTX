@@ -150,7 +150,15 @@ class TextRun(BaseModel):
     italic: bool = False
     underline: bool = False
     font_size: Optional[int] = None
+    font_name: Optional[str] = None
     color: Optional[str] = None  # Hex color
+
+
+class FontHints(BaseModel):
+    """Font hints for a text box."""
+
+    name: Optional[str] = None
+    size: Optional[int] = None
 
 
 class BulletItem(BaseModel):
@@ -193,6 +201,7 @@ class TextBoxElement(BaseModel):
     role: Literal["title", "subtitle", "body", "caption", "footer"]
     structure: TextStructure
     style_hints: StyleHints = Field(default_factory=StyleHints)
+    font_hints: Optional[FontHints] = None
     provenance: ElementProvenance = Field(default_factory=ElementProvenance)
 
 
