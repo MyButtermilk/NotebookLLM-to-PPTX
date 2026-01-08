@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@400;600;700;800&display=swap');
+
+:root {
+  --neu-base: #e8ecf1;
+  --neu-dark: #d1d9e6;
+  --neu-light: #ffffff;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--neu-base);
+  font-family: 'Inter', system-ui, sans-serif;
+  color: #2d3748;
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--neu-base);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--neu-dark);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b8c5d6;
+}
+
+/* Neumorphic utilities */
+@layer utilities {
+  .neu-surface {
+    background: var(--neu-base);
+    box-shadow: 6px 6px 12px #b8c5d6, -6px -6px 12px #ffffff;
+    border-radius: 16px;
+  }
+
+  .neu-surface-sm {
+    background: var(--neu-base);
+    box-shadow: 3px 3px 6px #b8c5d6, -3px -3px 6px #ffffff;
+    border-radius: 12px;
+  }
+
+  .neu-pressed {
+    background: var(--neu-base);
+    box-shadow: inset 4px 4px 8px #b8c5d6, inset -4px -4px 8px #ffffff;
+    border-radius: 12px;
+  }
+
+  .neu-button {
+    background: var(--neu-base);
+    box-shadow: 6px 6px 12px #b8c5d6, -6px -6px 12px #ffffff;
+    border-radius: 12px;
+    transition: all 0.2s ease;
+  }
+
+  .neu-button:hover {
+    box-shadow: 8px 8px 16px #b8c5d6, -8px -8px 16px #ffffff;
+  }
+
+  .neu-button:active {
+    box-shadow: inset 4px 4px 8px #b8c5d6, inset -4px -4px 8px #ffffff;
+  }
+
+  .neu-input {
+    background: var(--neu-base);
+    box-shadow: inset 3px 3px 6px #b8c5d6, inset -3px -3px 6px #ffffff;
+    border-radius: 8px;
+    border: 1px solid rgba(209, 217, 230, 0.3);
+  }
+
+  .neu-card {
+    background: var(--neu-base);
+    box-shadow: 8px 8px 16px #b8c5d6, -8px -8px 16px #ffffff;
+    border-radius: 20px;
+  }
+}
+
+/* Animations */
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

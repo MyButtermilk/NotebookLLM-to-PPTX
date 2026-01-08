@@ -9,6 +9,7 @@ Transform NotebookLLM slide exports into fully editable PowerPoint presentations
 
 ## 🎯 Features
 
+### Core Engine
 - **SOTA Extraction**: Datalab Convert API (Marker backend) with precise bounding boxes
 - **AI Layout Recovery**: Claude-powered intelligent block merging and structure inference
 - **Fallback OCR**: PaddleOCR for open-source/privacy-sensitive workflows
@@ -16,6 +17,82 @@ Transform NotebookLLM slide exports into fully editable PowerPoint presentations
 - **Full Editability**: Text becomes real text boxes, not images
 - **Audit Trail**: Interactive HTML reports for QA and debugging
 - **Canonical Format**: SlideGraph JSON intermediate representation
+
+### Web Interface ✨ NEW
+- **Modern UI**: Neumorphic design with beautiful depth and shadows
+- **Drag & Drop**: Intuitive file upload experience
+- **Real-time Progress**: WebSocket-powered live updates during conversion
+- **Conversion History**: Track and manage all your conversions
+- **Settings Management**: Configure API keys and defaults via web interface
+- **Mobile Responsive**: Works on desktop, tablet, and mobile
+
+## 🚀 Quick Start
+
+### 🪟 Windows Users (One-Click Launch)
+
+**Easiest way to get started:**
+
+1. **Download the repository**
+2. **Double-click `start.bat`** (or right-click `start.ps1` → "Run with PowerShell")
+3. **Add your API keys** when prompted
+4. **Done!** SlideRefactor opens automatically
+
+The launcher will:
+- ✅ Check prerequisites (Python, Node.js)
+- ✅ Install all dependencies automatically
+- ✅ Start both servers
+- ✅ Open your browser
+
+See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows instructions.
+
+### 🐧 Mac/Linux Users
+
+**Option 1: Python Launcher (Recommended)**
+```bash
+python launcher.py
+```
+
+**Option 2: Manual Setup**
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+pip install -r server/requirements.txt
+cd frontend && npm install && cd ..
+
+# 2. Set API keys
+cp .env.example .env
+# Edit .env with your Datalab and Anthropic API keys
+
+# 3. Start backend server
+cd server
+python -m uvicorn main:app --reload --port 8000
+
+# 4. Start frontend (in new terminal)
+cd frontend
+npm run dev
+```
+
+Open `http://localhost:3001` in your browser 🎉
+
+### 📚 More Resources
+
+- **[QUICKSTART.md](QUICKSTART.md)** - 5-minute setup guide
+- **[WINDOWS_SETUP.md](WINDOWS_SETUP.md)** - Windows-specific instructions
+
+### Command Line Interface
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Set API keys
+export DATALAB_API_KEY="your_key"
+export ANTHROPIC_API_KEY="your_key"
+
+# Convert a PDF
+sliderefactor input.pdf
+```
 
 ## 📦 Installation
 
@@ -110,57 +187,83 @@ print(f"Audit: {result['audit']}")
 
 ## 📊 Architecture
 
+### Full Stack Architecture
+
 ```
-┌──────────────┐
-│   PDF Input  │
-└──────┬───────┘
-       │
-       v
-┌──────────────────────┐
-│  1. Preprocessing    │  OpenCV (optional)
-│  - Deskew            │
-│  - Denoise           │
-│  - Sharpen           │
-└──────┬───────────────┘
-       │
-       v
-┌──────────────────────┐
-│  2. Extraction       │  Datalab API (primary)
-│  - Layout detection  │  or PaddleOCR (fallback)
-│  - OCR with bboxes   │
-│  - Image extraction  │
-└──────┬───────────────┘
-       │
-       v
-┌──────────────────────┐
-│  SlideGraph JSON     │  Canonical intermediate format
-│  (Auditable)         │
-└──────┬───────────────┘
-       │
-       v
-┌──────────────────────┐
-│  3. LLM Processing   │  Claude (Anthropic)
-│  - Block merging     │
-│  - Bullet inference  │
-│  - Role detection    │
-│  - Layout recovery   │
-└──────┬───────────────┘
-       │
-       v
-┌──────────────────────┐
-│  4. PPTX Rendering   │  python-pptx
-│  - Text boxes        │
-│  - Images            │
-│  - Styling           │
-└──────┬───────────────┘
-       │
-       v
-┌──────────────────────┐
-│  Output Artifacts    │
-│  - deck.pptx         │
-│  - deck.slidegraph   │
-│  - audit.html        │
-└──────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    Frontend (Next.js + React)               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
+│  │   Convert    │  │   History    │  │   Settings   │    │
+│  │   (Upload)   │  │  (Downloads) │  │  (API Keys)  │    │
+│  └──────┬───────┘  └──────────────┘  └──────────────┘    │
+│         │ HTTP/REST + WebSocket for real-time updates     │
+└─────────┼───────────────────────────────────────────────────┘
+          │
+          v
+┌─────────────────────────────────────────────────────────────┐
+│              Backend (FastAPI Server)                       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
+│  │  REST API    │  │  WebSocket   │  │  Job Queue   │    │
+│  │  Endpoints   │  │   Manager    │  │   (async)    │    │
+│  └──────┬───────┘  └──────────────┘  └──────┬───────┘    │
+│         │                                     │            │
+└─────────┼─────────────────────────────────────┼────────────┘
+          │                                     │
+          v                                     v
+┌─────────────────────────────────────────────────────────────┐
+│            SlideRefactor Pipeline (Python)                  │
+│                                                             │
+│  ┌──────────────┐                                          │
+│  │   PDF Input  │                                          │
+│  └──────┬───────┘                                          │
+│         │                                                   │
+│         v                                                   │
+│  ┌──────────────────────┐                                  │
+│  │  1. Preprocessing    │  OpenCV (optional)               │
+│  │  - Deskew            │                                  │
+│  │  - Denoise           │                                  │
+│  │  - Sharpen           │                                  │
+│  └──────┬───────────────┘                                  │
+│         │                                                   │
+│         v                                                   │
+│  ┌──────────────────────┐                                  │
+│  │  2. Extraction       │  Datalab API (primary)           │
+│  │  - Layout detection  │  or PaddleOCR (fallback)         │
+│  │  - OCR with bboxes   │                                  │
+│  │  - Image extraction  │                                  │
+│  └──────┬───────────────┘                                  │
+│         │                                                   │
+│         v                                                   │
+│  ┌──────────────────────┐                                  │
+│  │  SlideGraph JSON     │  Canonical intermediate format   │
+│  │  (Auditable)         │                                  │
+│  └──────┬───────────────┘                                  │
+│         │                                                   │
+│         v                                                   │
+│  ┌──────────────────────┐                                  │
+│  │  3. LLM Processing   │  Claude (Anthropic)              │
+│  │  - Block merging     │                                  │
+│  │  - Bullet inference  │                                  │
+│  │  - Role detection    │                                  │
+│  │  - Layout recovery   │                                  │
+│  └──────┬───────────────┘                                  │
+│         │                                                   │
+│         v                                                   │
+│  ┌──────────────────────┐                                  │
+│  │  4. PPTX Rendering   │  python-pptx                     │
+│  │  - Text boxes        │                                  │
+│  │  - Images            │                                  │
+│  │  - Styling           │                                  │
+│  └──────┬───────────────┘                                  │
+│         │                                                   │
+│         v                                                   │
+│  ┌──────────────────────┐                                  │
+│  │  Output Artifacts    │                                  │
+│  │  - deck.pptx         │                                  │
+│  │  - deck.slidegraph   │                                  │
+│  │  - audit.html        │                                  │
+│  └──────────────────────┘                                  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## 🧩 Components
@@ -398,23 +501,32 @@ result = pipeline.process(pdf_path, output_dir)
 
 ## 📚 Documentation
 
-- [Examples](examples/README.md) - Code examples
-- [API Reference](docs/api.md) - Full API documentation
-- [Architecture](docs/architecture.md) - System design details
-- [PRD](docs/prd.md) - Original product requirements
+- [Quick Start Guide](QUICKSTART.md) - Get running in 5 minutes
+- [Frontend Documentation](frontend/README.md) - Web interface details
+- [Examples](examples/README.md) - Python API code examples
+- [Contributing Guidelines](CONTRIBUTING.md) - How to contribute
 
 ## 🚦 Status
 
-- ✅ Core extraction (Datalab + PaddleOCR)
-- ✅ LLM prompt system (Claude)
-- ✅ PPTX rendering (python-pptx)
-- ✅ Audit HTML generation
-- ✅ OpenCV preprocessing
-- ✅ CLI interface
-- ✅ Python API
-- 🚧 LayoutParser integration (optional)
-- 🚧 DocLayout-YOLO support (optional)
-- 🚧 PptxGenJS alternative renderer (JavaScript)
+### ✅ Complete
+- Core extraction (Datalab + PaddleOCR)
+- LLM prompt system (Claude)
+- PPTX rendering (python-pptx)
+- Audit HTML generation
+- OpenCV preprocessing
+- CLI interface
+- Python API
+- **Web interface (Next.js + React)**
+- **FastAPI backend server**
+- **Real-time WebSocket progress**
+- **Neumorphic design system**
+
+### 🚧 Future Enhancements
+- LayoutParser integration (optional)
+- DocLayout-YOLO support (optional)
+- Page selection and reordering in web UI
+- Batch conversion support in web UI
+- Advanced preprocessing controls in web UI
 
 ## 📞 Support
 
