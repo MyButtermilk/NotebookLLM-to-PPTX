@@ -13,6 +13,7 @@ from datetime import datetime
 from sliderefactor.models import SlideGraph, SlideElements
 from sliderefactor.extractors.datalab import DatalabExtractor
 from sliderefactor.extractors.paddleocr_extractor import PaddleOCRExtractor
+from sliderefactor.extractors.pymupdf_enricher import PyMuPDFEnricher
 from sliderefactor.preprocessors import OpenCVPreprocessor
 from sliderefactor.prompt import BlockToElementConverter
 from sliderefactor.renderers import PPTXRenderer
@@ -67,6 +68,7 @@ class SlideRefactorPipeline:
         self.converter = BlockToElementConverter()
         self.renderer = PPTXRenderer()
         self.audit_generator = AuditHTMLGenerator() if generate_audit else None
+        self.enricher = PyMuPDFEnricher()
 
     def process(
         self,
@@ -127,6 +129,10 @@ class SlideRefactorPipeline:
         # Stage 2: Convert slides to images for audit (if using Datalab)
         print(f"\n[Stage 2/4] Preparing slide images")
         self._prepare_slide_images(pdf_path, images_dir, slide_graph)
+
+        # Stage 2.5: Enrich with fonts/backgrounds
+        print(f"\n[Stage 2.5/4] Enriching fonts and backgrounds")
+        self.enricher.enrich(pdf_path, slide_graph, images_dir)
 
         # Stage 3: LLM processing - convert blocks to elements
         print(f"\n[Stage 3/4] LLM processing ({len(slide_graph.slides)} slides)")

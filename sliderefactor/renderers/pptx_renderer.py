@@ -11,8 +11,6 @@ from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN, PP_PARAGRAPH_ALIGNMENT
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.dml.color import RGBColor
-from PIL import Image
-
 from sliderefactor.models import (
     SlideElements,
     TextBoxElement,
@@ -106,6 +104,10 @@ class PPTXRenderer:
             slide_layout = prs.slide_layouts[6]  # Blank layout
             slide = prs.slides.add_slide(slide_layout)
 
+            # Render background if present
+            if slide_info.background.mode == "image" and slide_info.background.image_ref:
+                self._render_background(slide, slide_info, images_dir)
+
             # Render each element
             for element in elements.elements:
                 if isinstance(element, TextBoxElement):
@@ -154,15 +156,28 @@ class PPTXRenderer:
         # Add content
         if element.structure.type == "bullets":
             self._add_bullets(
-                text_frame, element.structure.items, element.style_hints, font_size
+                text_frame,
+                element.structure.items,
+                element.style_hints,
+                font_size,
+                element.font_hints,
             )
         else:  # paragraphs
             self._add_paragraphs(
-                text_frame, element.structure.items, element.style_hints, font_size
+                text_frame,
+                element.structure.items,
+                element.style_hints,
+                font_size,
+                element.font_hints,
             )
 
     def _add_bullets(
-        self, text_frame, items: List[BulletItem], style_hints, font_size: int
+        self,
+        text_frame,
+        items: List[BulletItem],
+        style_hints,
+        font_size: int,
+        font_hints,
     ) -> None:
         """Add bullet points to text frame."""
         text_frame.clear()  # Remove default paragraph
@@ -191,8 +206,14 @@ class PPTXRenderer:
                             run.font.underline = True
                         if run_data.font_size:
                             run.font.size = Pt(run_data.font_size)
+                        elif font_hints and font_hints.size:
+                            run.font.size = Pt(font_hints.size)
                         else:
                             run.font.size = Pt(font_size)
+                        if run_data.font_name:
+                            run.font.name = run_data.font_name
+                        elif font_hints and font_hints.name:
+                            run.font.name = font_hints.name
                 else:
                     # No runs, just set text
                     p.text = item.text
@@ -209,7 +230,12 @@ class PPTXRenderer:
             if not item.runs if isinstance(item, BulletItem) else True:
                 for run in p.runs:
                     if run.font.size is None:
-                        run.font.size = Pt(font_size)
+                        if font_hints and font_hints.size:
+                            run.font.size = Pt(font_hints.size)
+                        else:
+                            run.font.size = Pt(font_size)
+                    if font_hints and font_hints.name:
+                        run.font.name = font_hints.name
 
             # Apply weight
             if style_hints.weight == "bold":
@@ -217,7 +243,12 @@ class PPTXRenderer:
                     run.font.bold = True
 
     def _add_paragraphs(
-        self, text_frame, items: List[str], style_hints, font_size: int
+        self,
+        text_frame,
+        items: List[str],
+        style_hints,
+        font_size: int,
+        font_hints,
     ) -> None:
         """Add paragraphs to text frame."""
         text_frame.clear()
@@ -235,7 +266,12 @@ class PPTXRenderer:
                 p.alignment = PP_PARAGRAPH_ALIGNMENT.LEFT
 
             for run in p.runs:
-                run.font.size = Pt(font_size)
+                if font_hints and font_hints.size:
+                    run.font.size = Pt(font_hints.size)
+                else:
+                    run.font.size = Pt(font_size)
+                if font_hints and font_hints.name:
+                    run.font.name = font_hints.name
                 if style_hints.weight == "bold":
                     run.font.bold = True
 
@@ -268,6 +304,24 @@ class PPTXRenderer:
             )
         except Exception as e:
             print(f"[PPTX] Warning: Failed to add image {image_path}: {e}")
+
+    def _render_background(self, slide, slide_info: Slide, images_dir: Path) -> None:
+        """Render slide background image."""
+        image_path = images_dir / slide_info.background.image_ref
+        if not image_path.exists():
+            print(f"[PPTX] Warning: Background image not found: {image_path}")
+            return
+
+        try:
+            slide.shapes.add_picture(
+                str(image_path),
+                Inches(0),
+                Inches(0),
+                width=Inches(self.slide_width_inches),
+                height=Inches(self.slide_height_inches),
+            )
+        except Exception as e:
+            print(f"[PPTX] Warning: Failed to add background {image_path}: {e}")
 
     def _render_shape(
         self, element: ShapeElement, slide, slide_info: Slide

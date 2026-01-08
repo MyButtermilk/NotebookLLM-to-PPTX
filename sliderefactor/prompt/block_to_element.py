@@ -21,6 +21,7 @@ from sliderefactor.models import (
     BBox,
     TextStructure,
     StyleHints,
+    FontHints,
     ElementProvenance,
     BulletItem,
     TextRun,
@@ -46,6 +47,7 @@ Priorities:
 2) Maximize editability: text must become textboxes, not images.
 3) Preserve layout: grouping, columns, bullets, titles.
 4) If uncertain about a graphic element, keep it as an image.
+5) Use font metadata hints when available.
 
 Return valid JSON only. No extra text, no markdown code blocks, no explanations."""
 
@@ -84,6 +86,10 @@ Output structure:
         "size": "xs|sm|md|lg|xl",
         "vertical_align": "top|middle|bottom"
       }},
+      "font_hints": {{
+        "name": "Font name if available",
+        "size": 18
+      }},
       "provenance": {{
         "block_ids": ["p0_b1", "p0_b2"],
         "engines": ["datalab"],
@@ -111,6 +117,7 @@ Rules:
 - Ensure all bboxes are within slide bounds.
 - For bullets, detect indentation by comparing bbox.x0 values.
 - Leading glyphs: •, -, *, >, numbers followed by . or )
+- When block metadata provides font_name or font_size, include font_hints for the textbox.
 
 Output ONLY the JSON object. Do not include markdown formatting, code blocks, or explanatory text."""
 
@@ -161,6 +168,10 @@ Output ONLY the JSON object. Do not include markdown formatting, code blocks, or
                     }
                     for line in block.lines
                 ]
+                if block.metadata.get("font_name"):
+                    block_dict["font_name"] = block.metadata["font_name"]
+                if block.metadata.get("font_size"):
+                    block_dict["font_size"] = block.metadata["font_size"]
             elif block.type == "image":
                 block_dict["image_ref"] = block.image_ref
             elif block.type == "shape_hint":
@@ -220,6 +231,15 @@ Output ONLY the JSON object. Do not include markdown formatting, code blocks, or
                 if element:
                     elements.append(element)
 
+            block_lookup = {block.id: block for block in slide.blocks}
+            for element in elements:
+                if isinstance(element, TextBoxElement) and element.font_hints is None:
+                    font_name, font_size = self._infer_font_hints(
+                        element, block_lookup
+                    )
+                    if font_name or font_size:
+                        element.font_hints = FontHints(name=font_name, size=font_size)
+
             slide_elements = SlideElements(
                 slide_index=slide.page_index,
                 elements=elements,
@@ -260,6 +280,8 @@ Output ONLY the JSON object. Do not include markdown formatting, code blocks, or
                                         text=run_data.get("text", ""),
                                         bold=run_data.get("bold", False),
                                         italic=run_data.get("italic", False),
+                                        font_size=run_data.get("font_size"),
+                                        font_name=run_data.get("font_name"),
                                     )
                                 )
                             items.append(
@@ -296,6 +318,7 @@ Output ONLY the JSON object. Do not include markdown formatting, code blocks, or
                     role=elem_dict.get("role", "body"),
                     structure=structure,
                     style_hints=style_hints,
+                    font_hints=elem_dict.get("font_hints"),
                     provenance=provenance,
                 )
 
@@ -336,3 +359,29 @@ Output ONLY the JSON object. Do not include markdown formatting, code blocks, or
             return None
 
         return None
+
+    @staticmethod
+    def _infer_font_hints(
+        element: TextBoxElement, block_lookup: Dict[str, Block]
+    ) -> tuple:
+        font_names = []
+        font_sizes = []
+        for block_id in element.provenance.block_ids:
+            block = block_lookup.get(block_id)
+            if not block:
+                continue
+            font_name = block.metadata.get("font_name")
+            font_size = block.metadata.get("font_size")
+            if font_name:
+                font_names.append(font_name)
+            if font_size:
+                font_sizes.append(int(round(font_size)))
+
+        dominant_name = None
+        dominant_size = None
+        if font_names:
+            dominant_name = max(set(font_names), key=font_names.count)
+        if font_sizes:
+            dominant_size = max(set(font_sizes), key=font_sizes.count)
+
+        return dominant_name, dominant_size
