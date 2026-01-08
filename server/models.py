@@ -6,6 +6,20 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 
+class JobStatus(BaseModel):
+    """Status of a job."""
+    status: str
+    message: Optional[str] = None
+    progress: float = 0.0
+
+class Job(BaseModel):
+    """A conversion job."""
+    id: str
+    filename: str
+    status: str
+    created_at: str
+    settings: Optional['ConversionSettings'] = None
+
 class ConversionSettings(BaseModel):
     """Settings for a conversion job."""
     extractor: str = Field(default="datalab", description="Extractor: datalab or paddleocr")
@@ -16,8 +30,8 @@ class ConversionSettings(BaseModel):
     slide_size: str = Field(default="16:9", description="Slide aspect ratio")
     dpi: int = Field(default=400, description="DPI for image extraction")
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "extractor": "datalab",
                 "use_preprocessing": False,
@@ -28,3 +42,4 @@ class ConversionSettings(BaseModel):
                 "dpi": 400
             }
         }
+    }

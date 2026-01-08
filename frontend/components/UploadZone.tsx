@@ -60,6 +60,11 @@ export default function UploadZone() {
           ${isDragActive ? 'ring-4 ring-primary-300' : ''}
           ${uploading ? 'opacity-60 cursor-wait' : ''}
         `}
+        // Explicitly handle these events to resolve framer-motion type conflicts
+        onAnimationStart={() => {}}
+        onDragStart={() => {}}
+        onDragEnd={() => {}}
+        onDrag={() => {}}
       >
         <input {...getInputProps()} />
 

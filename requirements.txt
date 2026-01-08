@@ -13,5 +13,8 @@ pypdfium2>=4.26.0
 pymupdf>=1.24.4
 
 # Optional OCR fallback
-# paddleocr>=2.7.0
-# paddlepaddle>=2.5.2
+paddleocr>=2.7.0
+paddlepaddle>=2.5.2
+
+# Testing
+pytest>=7.4.3
