@@ -5,13 +5,13 @@ pillow>=10.1.0
 requests>=2.31.0
 pydantic>=2.5.0
 jinja2>=3.1.2
-anthropic>=0.20.0
+google-genai>=1.0.0
 python-dotenv>=1.0.0
 tqdm>=4.66.1
 pdf2image>=1.16.3
 pypdfium2>=4.26.0
 pymupdf>=1.24.4
 
-# Optional OCR fallback
-# paddleocr>=2.7.0
-# paddlepaddle>=2.5.2
+# Optional OCR fallback (PaddleOCR 3.x for PP-StructureV3)
+paddleocr[all]>=3.0.0
+paddlepaddle>=3.0.0

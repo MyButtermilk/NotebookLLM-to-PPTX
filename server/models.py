@@ -15,6 +15,8 @@ class ConversionSettings(BaseModel):
     selected_pages: Optional[List[int]] = Field(default=None, description="Pages to convert")
     slide_size: str = Field(default="16:9", description="Slide aspect ratio")
     dpi: int = Field(default=400, description="DPI for image extraction")
+    render_background: bool = Field(default=True, description="Render background images (disable to avoid double text)")
+    skip_llm: bool = Field(default=True, description="Skip LLM and use direct block conversion (faster, more reliable)")
 
     class Config:
         json_schema_extra = {
@@ -25,6 +27,8 @@ class ConversionSettings(BaseModel):
                 "save_intermediate": True,
                 "selected_pages": None,
                 "slide_size": "16:9",
-                "dpi": 400
+                "dpi": 400,
+                "render_background": True,
+                "skip_llm": True
             }
         }

@@ -159,6 +159,9 @@ class FontHints(BaseModel):
 
     name: Optional[str] = None
     size: Optional[int] = None
+    bold: Optional[bool] = None
+    italic: Optional[bool] = None
+    color: Optional[str] = None  # Hex color (e.g. "#FF0000")
 
 
 class BulletItem(BaseModel):
@@ -227,7 +230,28 @@ class ShapeElement(BaseModel):
     provenance: ElementProvenance = Field(default_factory=ElementProvenance)
 
 
-Element = Union[TextBoxElement, ImageElement, ShapeElement]
+class TableCell(BaseModel):
+    """A single cell in a table."""
+
+    text: str = ""
+    row_span: int = 1
+    col_span: int = 1
+    is_header: bool = False
+    bold: bool = False
+    align: Literal["left", "center", "right"] = "left"
+
+
+class TableElement(BaseModel):
+    """A table element for PPTX."""
+
+    kind: Literal["table"] = "table"
+    bbox: BBox
+    rows: List[List[TableCell]] = Field(default_factory=list)
+    header_rows: int = 0
+    provenance: ElementProvenance = Field(default_factory=ElementProvenance)
+
+
+Element = Union[TextBoxElement, ImageElement, ShapeElement, TableElement]
 
 
 class SlideElements(BaseModel):

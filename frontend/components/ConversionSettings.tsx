@@ -18,6 +18,8 @@ export default function ConversionSettings({ jobId }: Props) {
     generate_audit: true,
     save_intermediate: true,
     slide_size: '16:9',
+    render_background: true,
+    skip_llm: true,
   })
 
   const [starting, setStarting] = useState(false)
@@ -141,6 +143,32 @@ export default function ConversionSettings({ jobId }: Props) {
               <div className="flex-1">
                 <div className="font-medium text-gray-800">Save SlideGraph JSON</div>
                 <div className="text-sm text-gray-600">Intermediate format for re-processing</div>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg hover:bg-neu-dark/20 transition-colors">
+              <input
+                type="checkbox"
+                checked={settings.render_background}
+                onChange={(e) => setSettings({ ...settings, render_background: e.target.checked })}
+                className="mt-1 w-5 h-5 text-primary-600 rounded"
+              />
+              <div className="flex-1">
+                <div className="font-medium text-gray-800">Render Background Image</div>
+                <div className="text-sm text-gray-600">Disable to avoid "double text" if layout isn't perfect</div>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg hover:bg-neu-dark/20 transition-colors">
+              <input
+                type="checkbox"
+                checked={settings.skip_llm}
+                onChange={(e) => setSettings({ ...settings, skip_llm: e.target.checked })}
+                className="mt-1 w-5 h-5 text-primary-600 rounded"
+              />
+              <div className="flex-1">
+                <div className="font-medium text-gray-800">Direct Conversion (Recommended)</div>
+                <div className="text-sm text-gray-600">Skip LLM, use OCR coordinates directly - faster and more reliable</div>
               </div>
             </label>
           </div>

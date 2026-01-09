@@ -2,6 +2,10 @@
 Main FastAPI application.
 """
 
+# Load environment variables FIRST, before other imports
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -62,6 +66,8 @@ class ConversionRequest(BaseModel):
     save_intermediate: bool = Field(default=True, description="Save SlideGraph JSON")
     selected_pages: Optional[List[int]] = Field(default=None, description="Pages to convert (0-indexed)")
     slide_size: str = Field(default="16:9", description="Slide aspect ratio")
+    render_background: bool = Field(default=True, description="Render background images (disable to avoid double text)")
+    skip_llm: bool = Field(default=False, description="Skip LLM and use direct block conversion (faster)")
 
 
 class JobResponse(BaseModel):
@@ -81,7 +87,7 @@ class JobResponse(BaseModel):
 class SettingsRequest(BaseModel):
     """Settings update request."""
     datalab_api_key: Optional[str] = None
-    anthropic_api_key: Optional[str] = None
+    gemini_api_key: Optional[str] = None
     default_extractor: Optional[str] = None
     default_preprocessing: Optional[bool] = None
 
@@ -296,7 +302,7 @@ async def get_settings():
     """Get current settings (masked API keys)."""
     return {
         "datalab_api_key": "****" if os.getenv("DATALAB_API_KEY") else None,
-        "anthropic_api_key": "****" if os.getenv("ANTHROPIC_API_KEY") else None,
+        "gemini_api_key": "****" if os.getenv("GEMINI_API_KEY") else None,
         "default_extractor": os.getenv("DEFAULT_EXTRACTOR", "datalab"),
         "default_preprocessing": os.getenv("DEFAULT_PREPROCESSING", "false") == "true",
     }
@@ -308,8 +314,8 @@ async def update_settings(settings: SettingsRequest):
     if settings.datalab_api_key:
         os.environ["DATALAB_API_KEY"] = settings.datalab_api_key
 
-    if settings.anthropic_api_key:
-        os.environ["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
+    if settings.gemini_api_key:
+        os.environ["GEMINI_API_KEY"] = settings.gemini_api_key
 
     if settings.default_extractor:
         os.environ["DEFAULT_EXTRACTOR"] = settings.default_extractor
@@ -331,13 +337,26 @@ async def test_connection(provider: str):
         # TODO: Actual connection test
         return {"status": "success", "message": "Connection OK", "latency_ms": 150}
 
-    elif provider == "anthropic":
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+    elif provider == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return {"status": "error", "message": "API key not set"}
 
-        # TODO: Actual connection test
-        return {"status": "success", "message": "Connection OK", "latency_ms": 200}
+        # Test Gemini connection
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            # Quick test with a simple prompt
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents="Say hello in one word."
+            )
+            if response.text:
+                return {"status": "success", "message": "Connection OK", "latency_ms": 200}
+            else:
+                return {"status": "error", "message": "Empty response from Gemini"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
     else:
         raise HTTPException(status_code=400, detail="Unknown provider")

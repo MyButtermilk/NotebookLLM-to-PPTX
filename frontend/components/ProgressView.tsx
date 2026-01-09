@@ -27,30 +27,38 @@ export default function ProgressView({ jobId }: Props) {
 
   useEffect(() => {
     if (lastMessage) {
-      const data = JSON.parse(lastMessage)
+      // Ignore non-JSON messages like 'pong' heartbeat
+      if (lastMessage === 'pong') return
 
-      if (data.progress !== undefined) {
-        setProgress(data.progress)
-      }
+      try {
+        const data = JSON.parse(lastMessage)
 
-      if (data.phase) {
-        setCurrentPhase(data.phase)
+        if (data.progress !== undefined) {
+          setProgress(data.progress)
+        }
 
-        // Update phases
-        const newPhases = [...PHASES]
-        if (data.progress >= 20) newPhases[1].completed = true
-        if (data.progress >= 50) newPhases[2].completed = true
-        if (data.progress >= 75) newPhases[3].completed = true
-        if (data.progress >= 100) newPhases[4].completed = true
-        setPhases(newPhases)
-      }
+        if (data.phase) {
+          setCurrentPhase(data.phase)
 
-      if (data.status === 'completed') {
-        useJobStore.setState({ jobStatus: 'completed' })
-      }
+          // Update phases
+          const newPhases = [...PHASES]
+          if (data.progress >= 20) newPhases[1].completed = true
+          if (data.progress >= 50) newPhases[2].completed = true
+          if (data.progress >= 75) newPhases[3].completed = true
+          if (data.progress >= 100) newPhases[4].completed = true
+          setPhases(newPhases)
+        }
 
-      if (data.status === 'failed') {
-        useJobStore.setState({ jobStatus: 'failed' })
+        if (data.status === 'completed') {
+          useJobStore.setState({ jobStatus: 'completed' })
+        }
+
+        if (data.status === 'failed') {
+          useJobStore.setState({ jobStatus: 'failed' })
+        }
+      } catch (e) {
+        // Ignore non-JSON messages
+        console.debug('Ignoring non-JSON WebSocket message:', lastMessage)
       }
     }
   }, [lastMessage])
@@ -127,7 +135,7 @@ export default function ProgressView({ jobId }: Props) {
       <div className="neu-surface-sm p-6 space-y-2">
         <h3 className="font-semibold text-gray-700">💡 Did you know?</h3>
         <p className="text-sm text-gray-600">
-          SlideRefactor uses Claude AI to intelligently reconstruct layout, infer bullet structures,
+          SlideRefactor uses Gemini AI to intelligently reconstruct layout, infer bullet structures,
           and preserve reading order—even in complex multi-column slides.
         </p>
       </div>

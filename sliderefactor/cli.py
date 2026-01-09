@@ -101,6 +101,12 @@ Environment Variables:
         help="Process from saved SlideGraph JSON instead of PDF",
     )
 
+    parser.add_argument(
+        "--no-background",
+        action="store_true",
+        help="Disable background image rendering (avoids 'double text' issue)",
+    )
+
     args = parser.parse_args()
 
     # Validate input
@@ -119,6 +125,7 @@ Environment Variables:
                 slidegraph_path=args.input,
                 output_dir=args.output,
                 generate_audit=not args.no_audit,
+                render_background=not args.no_background,
             )
         else:
             # Full pipeline from PDF
@@ -128,6 +135,7 @@ Environment Variables:
                 generate_audit=not args.no_audit,
                 save_intermediate=not args.no_intermediate,
                 debug=args.debug,
+                render_background=not args.no_background,
             )
 
             result = pipeline.process(

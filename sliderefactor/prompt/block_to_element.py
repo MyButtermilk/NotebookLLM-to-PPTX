@@ -1,7 +1,7 @@
 """
 LLM-powered block-to-element conversion.
 
-Uses Claude to intelligently convert OCR blocks into structured PPTX elements.
+Uses Google Gemini to intelligently convert OCR blocks into structured PPTX elements.
 """
 
 import os
@@ -9,7 +9,8 @@ import json
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 
-from anthropic import Anthropic
+from google import genai
+from google.genai import types
 
 from sliderefactor.models import (
     Slide,
@@ -36,7 +37,7 @@ class BlockToElementConverter:
     - Determine reading order and column layouts
     - Merge related blocks into coherent text boxes
     - Infer bullet structure and nesting
-    - Classify roles (title, subtitle, body, caption)
+    - Classify roles (title/body/caption)
     - Preserve layout fidelity
     """
 
@@ -46,7 +47,7 @@ Priorities:
 1) Do not invent text or numbers. Use OCR output verbatim.
 2) Maximize editability: text must become textboxes, not images.
 3) Preserve layout: grouping, columns, bullets, titles.
-4) If uncertain about a graphic element, keep it as an image.
+4) MANDATORY: Include ALL blocks of type 'image' or 'Picture' as image elements. Do not skip icons or logos.
 5) Use font metadata hints when available.
 
 Return valid JSON only. No extra text, no markdown code blocks, no explanations."""
@@ -118,22 +119,23 @@ Rules:
 - For bullets, detect indentation by comparing bbox.x0 values.
 - Leading glyphs: •, -, *, >, numbers followed by . or )
 - When block metadata provides font_name or font_size, include font_hints for the textbox.
+- CRITICAL: You MUST include every block with type="image" as a "kind": "image" element. Do not filter them out.
 
 Output ONLY the JSON object. Do not include markdown formatting, code blocks, or explanatory text."""
 
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "claude-3-5-sonnet-20241022",
-        max_tokens: int = 4096,
+        model: str = "gemini-2.0-flash",
+        max_tokens: int = 16384,
     ):
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
             raise ValueError(
-                "Anthropic API key required. Set ANTHROPIC_API_KEY env var or pass api_key parameter."
+                "Google API key required. Set GEMINI_API_KEY or GOOGLE_API_KEY env var or pass api_key parameter."
             )
 
-        self.client = Anthropic(api_key=self.api_key)
+        self.client = genai.Client(api_key=self.api_key)
         self.model = model
         self.max_tokens = max_tokens
 
@@ -196,36 +198,56 @@ Output ONLY the JSON object. Do not include markdown formatting, code blocks, or
 
         # Call LLM
         print(f"[LLM] Processing slide {slide.page_index} with {len(slide.blocks)} blocks")
+        print(f"[LLM] User Prompt Length: {len(user_prompt)}")
 
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            system=self.SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-
-        response_text = response.content[0].text
+        try:
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=self.SYSTEM_PROMPT,
+                    max_output_tokens=self.max_tokens,
+                    temperature=0.1,
+                ),
+            )
+            response_text = response.text
+        except Exception as e:
+            print(f"[LLM] Gemini API Error: {e}")
+            if hasattr(e, 'details'):
+                print(f"[LLM] Error Details: {e.details}")
+            # Reraise or return empty
+            raise e
 
         if debug:
             with open(debug_dir / f"response_slide_{slide.page_index}.txt", "w") as f:
                 f.write(response_text)
 
         # Parse response
+        elements = []
+        llm_success = False
+
         try:
             # Clean response (remove markdown code blocks if present)
             response_text = response_text.strip()
-            if response_text.startswith("```json"):
-                response_text = response_text[7:]
-            if response_text.startswith("```"):
-                response_text = response_text[3:]
-            if response_text.endswith("```"):
-                response_text = response_text[:-3]
-            response_text = response_text.strip()
+
+            # Use regex to find the JSON object (first { to last })
+            import re
+            match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if match:
+                response_text = match.group(0)
+            else:
+                 # Fallback to simple stripping if regex fails (unlikely for valid JSON)
+                if response_text.startswith("```json"):
+                    response_text = response_text[7:]
+                if response_text.startswith("```"):
+                    response_text = response_text[3:]
+                if response_text.endswith("```"):
+                    response_text = response_text[:-3]
+                response_text = response_text.strip()
 
             elements_data = json.loads(response_text)
 
             # Convert to Pydantic models
-            elements = []
             for elem_dict in elements_data.get("elements", []):
                 element = self._parse_element(elem_dict)
                 if element:
@@ -240,19 +262,56 @@ Output ONLY the JSON object. Do not include markdown formatting, code blocks, or
                     if font_name or font_size:
                         element.font_hints = FontHints(name=font_name, size=font_size)
 
-            slide_elements = SlideElements(
-                slide_index=slide.page_index,
-                elements=elements,
-            )
-
             print(f"[LLM] Generated {len(elements)} elements for slide {slide.page_index}")
-            return slide_elements
+            llm_success = True
 
         except json.JSONDecodeError as e:
             print(f"[LLM] Error parsing JSON response: {e}")
             print(f"[LLM] Response: {response_text[:500]}")
-            # Return empty elements as fallback
-            return SlideElements(slide_index=slide.page_index, elements=[])
+            print(f"[LLM] Using fallback: direct block conversion")
+            # Fallback: convert blocks directly without LLM
+            elements = self._fallback_convert_blocks(slide)
+
+        # ALWAYS run recovery: Force-include images that may have been skipped
+        # This runs whether LLM succeeded or fallback was used
+        for block in slide.blocks:
+            if block.type == "image":
+                # Check if this block is already represented in the elements
+                is_covered = False
+                for elem in elements:
+                    # Check provenance
+                    if hasattr(elem, 'provenance') and block.id in elem.provenance.block_ids:
+                        is_covered = True
+                        break
+                    # Check bbox overlap (approximate)
+                    if isinstance(elem, ImageElement):
+                        # If centers are close
+                        c1 = [(elem.bbox.coords[0] + elem.bbox.coords[2])/2, (elem.bbox.coords[1] + elem.bbox.coords[3])/2]
+                        c2 = [(block.bbox.coords[0] + block.bbox.coords[2])/2, (block.bbox.coords[1] + block.bbox.coords[3])/2]
+                        dist = ((c1[0]-c2[0])**2 + (c1[1]-c2[1])**2)**0.5
+                        if dist < 50:  # within 50 pixels
+                            is_covered = True
+                            break
+
+                if not is_covered:
+                    print(f"[LLM] Recovering skipped image block: {block.id}")
+                    # Use the image_ref from the block (should be set during extraction/enrichment)
+                    ref = block.image_ref or f"recovered_{block.id.replace('/', '_')}.png"
+
+                    new_elem = ImageElement(
+                        bbox=block.bbox,
+                        image_ref=ref,
+                        crop_mode="fit",
+                        provenance=ElementProvenance(
+                            block_ids=[block.id],
+                            engines=["recovery"],
+                            min_confidence=block.confidence
+                        )
+                    )
+                    elements.append(new_elem)
+
+        print(f"[LLM] Final element count for slide {slide.page_index}: {len(elements)}")
+        return SlideElements(slide_index=slide.page_index, elements=elements)
 
     def _parse_element(self, elem_dict: Dict[str, Any]) -> Optional[Any]:
         """Parse a single element from LLM response."""
@@ -385,3 +444,86 @@ Output ONLY the JSON object. Do not include markdown formatting, code blocks, or
             dominant_size = max(set(font_sizes), key=font_sizes.count)
 
         return dominant_name, dominant_size
+
+    def _fallback_convert_blocks(self, slide: Slide) -> List[Any]:
+        """
+        Direct block-to-element conversion when LLM fails.
+
+        This is a simple fallback that converts each block directly
+        without intelligent merging or layout analysis.
+        """
+        elements = []
+
+        for block in slide.blocks:
+            if block.type == "text":
+                # Create a simple textbox for each text block
+                text_content = block.text or ""
+                if not text_content and block.lines:
+                    text_content = "\n".join(line.text for line in block.lines if line.text)
+
+                if not text_content.strip():
+                    continue
+
+                # Determine role based on position and size
+                bbox = block.bbox.coords
+                height = bbox[3] - bbox[1]
+                y_pos = bbox[1]
+
+                # Simple heuristics for role
+                if y_pos < slide.height_px * 0.15 and height > 30:
+                    role = "title"
+                elif y_pos > slide.height_px * 0.85:
+                    role = "footer"
+                else:
+                    role = "body"
+
+                # Build structure as paragraphs
+                structure = TextStructure(
+                    type="paragraphs",
+                    items=[text_content]
+                )
+
+                # Get font info from metadata
+                font_hints = None
+                if block.metadata.get("font_name") or block.metadata.get("font_size"):
+                    font_hints = FontHints(
+                        name=block.metadata.get("font_name"),
+                        size=int(round(block.metadata.get("font_size", 12)))
+                    )
+
+                element = TextBoxElement(
+                    bbox=block.bbox,
+                    role=role,
+                    structure=structure,
+                    style_hints=StyleHints(
+                        align="left",
+                        weight="regular",
+                        size="md",
+                        vertical_align="top"
+                    ),
+                    font_hints=font_hints,
+                    provenance=ElementProvenance(
+                        block_ids=[block.id],
+                        engines=["fallback"],
+                        min_confidence=block.confidence
+                    )
+                )
+                elements.append(element)
+
+            elif block.type == "image":
+                # Create image element
+                ref = block.image_ref or f"fallback_{block.id.replace('/', '_')}.png"
+                element = ImageElement(
+                    bbox=block.bbox,
+                    image_ref=ref,
+                    crop_mode="fit",
+                    provenance=ElementProvenance(
+                        block_ids=[block.id],
+                        engines=["fallback"],
+                        min_confidence=block.confidence
+                    )
+                )
+                elements.append(element)
+
+        print(f"[LLM] Fallback created {len(elements)} elements from {len(slide.blocks)} blocks")
+        return elements

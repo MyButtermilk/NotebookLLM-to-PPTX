@@ -506,27 +506,28 @@ result = pipeline.process(pdf_path, output_dir)
 - [Examples](examples/README.md) - Python API code examples
 - [Contributing Guidelines](CONTRIBUTING.md) - How to contribute
 
-## 🚦 Status
+## 🛠️ Status & Learnings (Latest Update)
 
-### ✅ Complete
-- Core extraction (Datalab + PaddleOCR)
-- LLM prompt system (Claude)
-- PPTX rendering (python-pptx)
-- Audit HTML generation
-- OpenCV preprocessing
-- CLI interface
-- Python API
-- **Web interface (Next.js + React)**
-- **FastAPI backend server**
-- **Real-time WebSocket progress**
-- **Neumorphic design system**
+### ✅ What We Fixed
+1. **Coordinate System Unification**: Solved major alignment issues where text was shifted/scaled incorrectly. We now dynamically map Datalab's point-based coordinates to our 400DPI rendering canvas.
+2. **Visual Region Detection**: Implemented OpenCV-based detection to find icons, images, and graphics that OCR doesn't detect. This works by:
+   - Detecting the dominant background color (handles white and colored backgrounds)
+   - Finding non-text regions using color difference and edge detection
+   - Filtering by size and content density to avoid noise
+   - Automatically cropping and saving detected regions as separate movable images
+3. **Text Layout Fidelity**:
+   - Fixed "giant text" bugs by standardizing font size mapping (Body: ~16pt, Title: ~32pt).
+   - Eliminated premature text wrapping by adding intelligent width buffers (+0.2") to text boxes.
+   - Removed default text margins for tighter alignment.
+4. **Real-time UX**: Refactored the backend pipeline to report granular progress (Extraction -> Enrichment -> LLM -> Rendering) so the UI progress bar moves smoothly instead of jumping.
+5. **Background Toggle**: Added `--no-background` CLI flag and UI checkbox. Background is now only added for genuine embedded images, not rendered pages (fixing the "double content" issue).
+6. **Table Handling**: Tables detected by Datalab are automatically cropped from page screenshots and rendered as images in PPTX.
+7. **Font Matching**: Implemented intelligent font name normalization that maps PDF internal font names (like 'ArialMT', 'BCDEEE+Calibri', 'HelveticaNeue-Bold') to PowerPoint-compatible names.
 
-### 🚧 Future Enhancements
-- LayoutParser integration (optional)
-- DocLayout-YOLO support (optional)
-- Page selection and reordering in web UI
-- Batch conversion support in web UI
-- Advanced preprocessing controls in web UI
+### 🚧 Known Limitations
+1. **Very Small Icons**: Icons smaller than 20x20 pixels may not be detected by visual region detection.
+2. **Complex Tables**: Tables are rendered as images; native PPTX table cells with editable text requires structured table data from the source.
+3. **Low-Contrast Elements**: Graphics that are very similar in color to the background may not be detected.
 
 ## 📞 Support
 

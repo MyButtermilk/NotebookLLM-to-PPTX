@@ -3,10 +3,13 @@ Datalab Convert API integration (Marker backend).
 
 Datalab provides SOTA extraction with precise bounding boxes,
 layout detection, and auditability via citations.
+
+API Documentation: https://documentation.datalab.to/docs/welcome/api
 """
 
 import os
 import json
+import re
 import time
 import requests
 from pathlib import Path
@@ -36,19 +39,22 @@ class DatalabExtractor:
     - Citation-level auditability
     """
 
+    # Correct API endpoint per documentation
+    DEFAULT_API_URL = "https://www.datalab.to/api/v1/marker"
+
     def __init__(
         self,
         api_key: Optional[str] = None,
         api_url: Optional[str] = None,
         dpi: int = 400,
         timeout: int = 300,
+        poll_interval: int = 2,
     ):
         self.api_key = api_key or os.getenv("DATALAB_API_KEY")
-        self.api_url = api_url or os.getenv(
-            "DATALAB_API_URL", "https://api.datalab.to/v1/convert"
-        )
+        self.api_url = api_url or os.getenv("DATALAB_API_URL", self.DEFAULT_API_URL)
         self.dpi = dpi
         self.timeout = timeout
+        self.poll_interval = poll_interval
         self.name = "datalab"
 
         if not self.api_key:
@@ -73,19 +79,22 @@ class DatalabExtractor:
 
         print(f"[Datalab] Uploading PDF: {pdf_path.name}")
 
-        # Upload PDF to Datalab
+        # Step 1: Submit PDF to Datalab API
         with open(pdf_path, "rb") as f:
             files = {"file": (pdf_path.name, f, "application/pdf")}
-            headers = {"Authorization": f"Bearer {self.api_key}"}
+            # Correct auth header per documentation: X-API-Key
+            headers = {"X-API-Key": self.api_key}
             data = {
-                "output_format": "json",
-                "extract_images": "true",
-                "include_bboxes": "true",
-                "dpi": str(self.dpi),
+                "output_format": "json",  # Request JSON with bounding boxes
+                "mode": "accurate",  # accurate mode for best quality
+                "paginate": "true",  # Get per-page results
+                "add_block_ids": "true",  # Include block IDs for tracking
+                "extract_images": "true",  # Extract images with base64 data
+                "disable_image_captions": "true",  # Don't generate image captions
             }
 
             response = requests.post(
-                self.api_url, headers=headers, files=files, data=data, timeout=self.timeout
+                self.api_url, headers=headers, files=files, data=data, timeout=60
             )
 
         if response.status_code != 200:
@@ -93,7 +102,22 @@ class DatalabExtractor:
                 f"Datalab API error: {response.status_code} - {response.text}"
             )
 
-        result = response.json()
+        initial_result = response.json()
+        
+        # Step 2: Get the check URL for polling
+        check_url = initial_result.get("request_check_url")
+        if not check_url:
+            # If no check_url, the result might be inline (for small files)
+            if initial_result.get("status") == "complete":
+                result = initial_result
+            else:
+                raise RuntimeError(
+                    f"Datalab API error: No request_check_url in response: {initial_result}"
+                )
+        else:
+            # Step 3: Poll until processing is complete
+            print(f"[Datalab] Processing started, polling for results...")
+            result = self._poll_for_results(check_url)
 
         # Save raw response for debugging
         raw_output_path = output_dir / "datalab_response.json"
@@ -108,68 +132,118 @@ class DatalabExtractor:
         print(f"[Datalab] Extracted {len(slide_graph.slides)} slides")
         return slide_graph
 
+    def _poll_for_results(self, check_url: str) -> Dict[str, Any]:
+        """
+        Poll the check URL until processing is complete.
+        
+        Per API docs:
+        - Poll every 2 seconds
+        - Wait for status == "complete"
+        """
+        headers = {"X-API-Key": self.api_key}
+        start_time = time.time()
+        
+        while True:
+            elapsed = time.time() - start_time
+            if elapsed > self.timeout:
+                raise RuntimeError(f"Datalab API timeout after {self.timeout}s")
+            
+            response = requests.get(check_url, headers=headers, timeout=30)
+            
+            if response.status_code != 200:
+                raise RuntimeError(
+                    f"Datalab polling error: {response.status_code} - {response.text}"
+                )
+            
+            result = response.json()
+            status = result.get("status", "")
+            
+            if status == "complete":
+                print(f"[Datalab] Processing complete after {elapsed:.1f}s")
+                return result
+            elif status == "failed":
+                error = result.get("error", "Unknown error")
+                raise RuntimeError(f"Datalab processing failed: {error}")
+            else:
+                # Status is "processing" - continue polling
+                print(f"[Datalab] Status: {status}, waiting...")
+                time.sleep(self.poll_interval)
+
     def _parse_datalab_response(
         self, response: Dict[str, Any], output_dir: Path
     ) -> SlideGraph:
         """
         Parse Datalab API response into SlideGraph format.
-
-        Datalab response structure (simplified):
-        {
-            "pages": [
-                {
-                    "page_num": 0,
-                    "width": 1920,
-                    "height": 1080,
-                    "blocks": [
-                        {
-                            "type": "text",
-                            "bbox": [x0, y0, x1, y1],
-                            "text": "...",
-                            "lines": [{"text": "...", "bbox": [...]}],
-                            "confidence": 0.95
-                        },
-                        {
-                            "type": "image",
-                            "bbox": [...],
-                            "image_url": "...",
-                            "image_id": "img_001"
-                        }
-                    ]
-                }
-            ],
-            "images": { "img_001": "base64..." }
-        }
+        Handles the Marker-style JSON structure with nested children.
         """
+        # Get metadata
+        metadata = response.get("metadata", {})
+        page_count = metadata.get("page_count", 0)
+        
+        # Get JSON data - structure varies based on output_format
+        json_data = response.get("json", {})
+        
+        # In Marker, the root 'json' object has 'children' which are the pages
+        pages_data = json_data.get("children", [])
+        
+        # If no children but markdown exists, fallback to markdown parsing
+        if not pages_data and response.get("markdown"):
+            pages_data = self._parse_markdown_pages(response.get("markdown", ""), page_count)
+            # Normalize markdown pages to match the structure we expect
+            pages = pages_data
+        else:
+            pages = []
+            for i, page_item in enumerate(pages_data):
+                # In Marker JSON, each page item has block_type: "Page"
+                if page_item.get("block_type") == "Page":
+                    pages.append(page_item)
+                else:
+                    # If it's not explicitly a Page block, but we have no better options,
+                    # treat it as a page if it's top-level
+                    pages.append(page_item)
+
+        if not pages:
+            # Absolute fallback if nothing else works
+            print(f"[Datalab] Warning: No pages found in response, creating dummy page.")
+            pages = [{
+                "page": 0,
+                "bbox": [0, 0, 1920, 1080],
+                "children": []
+            }]
+
         meta = SlideGraphMeta(
             source="notebooklm_flattened_pdf",
             dpi=self.dpi,
             version="1.0",
             created_at=datetime.utcnow().isoformat() + "Z",
-            total_pages=len(response.get("pages", [])),
+            total_pages=len(pages),
             extraction_engines=["datalab"],
         )
 
         slides = []
         images = response.get("images", {})
+        
+        for i, page_data in enumerate(pages):
+            page_index = page_data.get("page", i)
+            # BBox in Datalab is often [x0, y0, x1, y1] for pages too
+            bbox_coords = page_data.get("bbox", [0, 0, 1920, 1080])
+            width = bbox_coords[2] - bbox_coords[0]
+            height = bbox_coords[3] - bbox_coords[1]
 
-        for page_data in response.get("pages", []):
-            page_index = page_data.get("page_num", 0)
-            width = page_data.get("width", 1920)
-            height = page_data.get("height", 1080)
-
+            # Flatten nested children into flat blocks list
             blocks = []
-            for i, block_data in enumerate(page_data.get("blocks", [])):
-                block = self._parse_block(
-                    block_data, page_index, i, images, output_dir
-                )
-                if block:
-                    blocks.append(block)
+            # Marker calls them 'children', SlideRefactor calls them 'blocks'
+            raw_blocks = page_data.get("children", []) or page_data.get("blocks", [])
+            
+            # Recursively parse all blocks (including nested children)
+            self._parse_blocks_recursive(
+                raw_blocks, page_index, blocks, images, output_dir, counter=[0]
+            )
 
             slide = Slide(
                 page_index=page_index,
-                width_px=float(width),
-                height_px=float(height),
+                width_px=float(width) if width > 0 else 1920.0,
+                height_px=float(height) if height > 0 else 1080.0,
                 background=BackgroundConfig(mode="blank"),
                 blocks=blocks,
                 dpi=self.dpi,
@@ -177,6 +251,73 @@ class DatalabExtractor:
             slides.append(slide)
 
         return SlideGraph(meta=meta, slides=slides)
+
+    def _parse_blocks_recursive(
+        self,
+        blocks_data: List[Dict],
+        page_index: int,
+        result_blocks: List[Block],
+        images: Dict[str, str],
+        output_dir: Path,
+        counter: List[int],
+    ) -> None:
+        """
+        Recursively parse blocks and their children.
+
+        Marker's JSON structure has nested children - we need to flatten them
+        while preserving bounding boxes and types.
+        """
+        for block_data in blocks_data:
+            block_type_raw = block_data.get("block_type") or block_data.get("type", "")
+
+            # Skip container types that don't have content themselves
+            container_types = {"Page", "Document", "Group"}
+
+            if block_type_raw not in container_types:
+                # Parse this block
+                parsed_block = self._parse_block(
+                    block_data, page_index, counter[0], images, output_dir
+                )
+                if parsed_block:
+                    result_blocks.append(parsed_block)
+                    counter[0] += 1
+
+            # Recursively process children
+            children = block_data.get("children", [])
+            if children:
+                self._parse_blocks_recursive(
+                    children, page_index, result_blocks, images, output_dir, counter
+                )
+
+    def _parse_markdown_pages(self, markdown: str, page_count: int) -> List[Dict]:
+        """Parse markdown content into page structures."""
+        # Simple parsing: split by page markers if present, or create one page
+        # Datalab markdown uses "---" or page markers
+        pages = []
+        
+        # Split by common page separators
+        page_texts = markdown.split("\n---\n")
+        if len(page_texts) == 1:
+            page_texts = [markdown]
+        
+        for i, text in enumerate(page_texts):
+            if not text.strip():
+                continue
+            pages.append({
+                "page_num": i,
+                "width": 1920,
+                "height": 1080,
+                "blocks": [{
+                    "type": "text",
+                    "bbox": [50, 50, 1870, 1030],
+                    "text": text.strip(),
+                    "confidence": 1.0,
+                    "lines": [{"text": line, "bbox": [50, 50 + j*30, 1870, 80 + j*30], "confidence": 1.0} 
+                              for j, line in enumerate(text.strip().split("\n")) if line.strip()]
+                }]
+            })
+        
+        return pages
 
     def _parse_block(
         self,
@@ -187,56 +328,96 @@ class DatalabExtractor:
         output_dir: Path,
     ) -> Optional[Block]:
         """Parse a single block from Datalab response."""
-        block_type = block_data.get("type", "text")
+        # Marker uses 'block_type' instead of 'type'
+        block_type_raw = block_data.get("block_type") or block_data.get("type", "")
+
+        # Skip empty or unknown block types
+        if not block_type_raw:
+            return None
+
+        # Map Marker types to SlideRefactor types
+        type_mapping = {
+            "Text": "text",
+            "TextInlineMath": "text",
+            "SectionHeader": "text",
+            "ListItem": "text",
+            "ListGroup": None,  # Container, skip
+            "Table": "table",
+            "TableCell": None,  # Part of table, skip
+            "Picture": "image",
+            "Figure": "image",
+            "FigureGroup": None,  # Container, skip
+            "Caption": None,  # Skip captions per user request
+            "Footnote": "text",
+            "PageFooter": "text",
+            "PageHeader": "text",
+            "Code": "text",
+            "Equation": "text",
+            "Line": None,  # Low-level element, skip
+            "Span": None,  # Low-level element, skip
+        }
+
+        block_type = type_mapping.get(block_type_raw)
+        if block_type is None:
+            # Skip this block type
+            return None
+
         bbox_data = block_data.get("bbox", [0, 0, 100, 100])
 
         try:
             bbox = BBox(coords=bbox_data)
-        except ValueError:
-            # Invalid bbox, skip this block
+        except (ValueError, TypeError):
             return None
 
-        block_id = f"p{page_index}_b{block_index}"
+        # Validate bbox has non-zero size
+        if bbox_data[2] <= bbox_data[0] or bbox_data[3] <= bbox_data[1]:
+            return None
+
+        block_id = block_data.get("id", f"/page/{page_index}/block/{block_index}")
         confidence = block_data.get("confidence", 1.0)
 
         provenance = [
             Provenance(
                 engine="datalab",
-                ref=block_data.get("id", block_id),
+                ref=block_id,
                 timestamp=datetime.utcnow().isoformat() + "Z",
-                metadata={"block_type": block_type},
+                metadata={"block_type": block_type_raw},
             )
         ]
 
         if block_type == "text":
+            # Marker uses 'html' or 'text' - prefer text if available
             text = block_data.get("text", "")
-            lines_data = block_data.get("lines", [])
-            lines = []
+            if not text:
+                # Fall back to html and strip tags
+                html = block_data.get("html", "")
+                text = self._strip_html_tags(html)
 
-            for line_data in lines_data:
-                try:
-                    line_bbox = BBox(coords=line_data.get("bbox", bbox_data))
-                    line = Line(
-                        text=line_data.get("text", ""),
-                        bbox=line_bbox,
-                        confidence=line_data.get("confidence", confidence),
-                    )
-                    lines.append(line)
-                except ValueError:
-                    continue
+            # Skip empty text blocks
+            if not text or not text.strip():
+                return None
+
+            lines = [Line(text=text.strip(), bbox=bbox, confidence=confidence)]
 
             return Block(
                 id=block_id,
                 type="text",
                 bbox=bbox,
-                text=text,
+                text=text.strip(),
                 lines=lines,
                 confidence=confidence,
                 provenance=provenance,
             )
 
         elif block_type == "image":
-            image_id = block_data.get("image_id", f"img_{block_id}")
+            # Marker uses 'src' for image file name in children
+            image_src = block_data.get("src")
+            image_id = None
+            if image_src:
+                image_id = image_src
+            else:
+                image_id = block_data.get("image_id", f"img_{block_id}")
+
             image_ref = None
 
             # Save image if base64 data is available
@@ -262,6 +443,12 @@ class DatalabExtractor:
                     block_data["image_url"], output_dir, page_index, block_index
                 )
 
+            # For flat PDFs: if no image data available, mark for later cropping
+            # The image will be cropped from the page screenshot during enrichment
+            if not image_ref:
+                image_ref = f"crop_p{page_index}_b{block_index}.png"
+                print(f"[Datalab] Image block {block_id} has no image data - will crop from page image")
+
             return Block(
                 id=block_id,
                 type="image",
@@ -269,19 +456,26 @@ class DatalabExtractor:
                 image_ref=image_ref,
                 confidence=confidence,
                 provenance=provenance,
+                metadata={"needs_crop": image_ref.startswith("crop_")},
             )
 
         elif block_type == "table":
-            # For now, treat tables as images (as per PRD)
-            # TODO: Handle structured table data if available
+            # Treat tables as images - will be cropped from page screenshot
+            image_ref = f"table_p{page_index}_b{block_index}.png"
+            print(f"[Datalab] Table block {block_id} - will crop from page image")
+
             return Block(
                 id=block_id,
-                type="table",
+                type="image",  # Treat as image for rendering
                 bbox=bbox,
-                text=block_data.get("text", ""),
+                image_ref=image_ref,
                 confidence=confidence,
                 provenance=provenance,
-                metadata={"table_data": block_data.get("cells", [])},
+                metadata={
+                    "original_type": "table",
+                    "needs_crop": True,
+                    "table_data": block_data.get("cells", []),
+                },
             )
 
         return None
@@ -304,6 +498,26 @@ class DatalabExtractor:
         except Exception as e:
             print(f"[Datalab] Warning: Failed to download image from {url}: {e}")
             return None
+
+    @staticmethod
+    def _strip_html_tags(html: str) -> str:
+        """Strip HTML tags from text and convert common entities."""
+        if not html:
+            return ""
+        # Replace <br> tags with spaces
+        text = re.sub(r'<br\s*/?>', ' ', html)
+        # Remove all HTML tags
+        text = re.sub(r'<[^>]+>', '', text)
+        # Convert common HTML entities
+        text = text.replace('&amp;', '&')
+        text = text.replace('&lt;', '<')
+        text = text.replace('&gt;', '>')
+        text = text.replace('&nbsp;', ' ')
+        text = text.replace('&quot;', '"')
+        text = text.replace('&#39;', "'")
+        # Normalize whitespace
+        text = ' '.join(text.split())
+        return text.strip()
 
     def extract_page(self, pdf_path: Path, page_num: int, output_dir: Path) -> Slide:
         """

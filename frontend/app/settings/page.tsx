@@ -7,14 +7,14 @@ import axios from 'axios'
 export default function SettingsPage() {
   const [settings, setSettings] = useState({
     datalab_api_key: '',
-    anthropic_api_key: '',
+    gemini_api_key: '',
     default_extractor: 'datalab',
     default_preprocessing: false,
   })
 
   const [showKeys, setShowKeys] = useState({
     datalab: false,
-    anthropic: false,
+    gemini: false,
   })
 
   const [testResults, setTestResults] = useState<Record<string, any>>({})
@@ -116,9 +116,8 @@ export default function SettingsPage() {
             </button>
           </div>
           {testResults.datalab && (
-            <div className={`flex items-center gap-2 text-sm ${
-              testResults.datalab.status === 'success' ? 'text-success' : 'text-error'
-            }`}>
+            <div className={`flex items-center gap-2 text-sm ${testResults.datalab.status === 'success' ? 'text-success' : 'text-error'
+              }`}>
               {testResults.datalab.status === 'success' ? <FiCheck /> : <FiX />}
               {testResults.datalab.message}
               {testResults.datalab.latency_ms && ` (${testResults.datalab.latency_ms}ms)`}
@@ -126,35 +125,35 @@ export default function SettingsPage() {
           )}
         </div>
 
-        {/* Anthropic */}
+        {/* Gemini */}
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700">
-            Anthropic API Key
-            <span className="text-xs text-gray-500 ml-2">(Claude for AI processing)</span>
+            Gemini API Key
+            <span className="text-xs text-gray-500 ml-2">(Gemini 2.0 Flash for AI processing)</span>
           </label>
           <div className="flex gap-3">
             <div className="flex-1 relative">
               <input
-                type={showKeys.anthropic ? 'text' : 'password'}
-                value={settings.anthropic_api_key}
-                onChange={(e) => setSettings({ ...settings, anthropic_api_key: e.target.value })}
-                placeholder="Enter your Anthropic API key"
+                type={showKeys.gemini ? 'text' : 'password'}
+                value={settings.gemini_api_key}
+                onChange={(e) => setSettings({ ...settings, gemini_api_key: e.target.value })}
+                placeholder="Enter your Gemini API key"
                 className="w-full neu-input px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-400"
               />
               <button
                 type="button"
-                onClick={() => setShowKeys({ ...showKeys, anthropic: !showKeys.anthropic })}
+                onClick={() => setShowKeys({ ...showKeys, gemini: !showKeys.gemini })}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
               >
-                {showKeys.anthropic ? <FiEyeOff /> : <FiEye />}
+                {showKeys.gemini ? <FiEyeOff /> : <FiEye />}
               </button>
             </div>
             <button
-              onClick={() => testConnection('anthropic')}
-              disabled={testing.anthropic || !settings.anthropic_api_key}
+              onClick={() => testConnection('gemini')}
+              disabled={testing.gemini || !settings.gemini_api_key}
               className="neu-button px-4 py-3 text-gray-700 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              {testing.anthropic ? (
+              {testing.gemini ? (
                 <>
                   <FiRefreshCw className="animate-spin" />
                   Testing...
@@ -164,13 +163,12 @@ export default function SettingsPage() {
               )}
             </button>
           </div>
-          {testResults.anthropic && (
-            <div className={`flex items-center gap-2 text-sm ${
-              testResults.anthropic.status === 'success' ? 'text-success' : 'text-error'
-            }`}>
-              {testResults.anthropic.status === 'success' ? <FiCheck /> : <FiX />}
-              {testResults.anthropic.message}
-              {testResults.anthropic.latency_ms && ` (${testResults.anthropic.latency_ms}ms)`}
+          {testResults.gemini && (
+            <div className={`flex items-center gap-2 text-sm ${testResults.gemini.status === 'success' ? 'text-success' : 'text-error'
+              }`}>
+              {testResults.gemini.status === 'success' ? <FiCheck /> : <FiX />}
+              {testResults.gemini.message}
+              {testResults.gemini.latency_ms && ` (${testResults.gemini.latency_ms}ms)`}
             </div>
           )}
         </div>

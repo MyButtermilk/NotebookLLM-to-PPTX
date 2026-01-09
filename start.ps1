@@ -106,8 +106,8 @@ if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"
     Write-Host ""
     Write-Host "IMPORTANT: Please edit .env and add your API keys:" -ForegroundColor Cyan
-    Write-Host "  - DATALAB_API_KEY" -ForegroundColor Cyan
-    Write-Host "  - ANTHROPIC_API_KEY" -ForegroundColor Cyan
+    Write-Host "  - DATALAB_API_KEY (for PDF extraction)" -ForegroundColor Cyan
+    Write-Host "  - GEMINI_API_KEY (for AI processing)" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Opening .env in notepad..." -ForegroundColor Yellow
     Start-Process notepad ".env" -Wait
@@ -117,7 +117,19 @@ if (-not (Test-Path ".env")) {
 }
 Write-Host "   Configuration OK!" -ForegroundColor Green
 
-# Start servers
+# Clean up old instances if they are still running
+Write-Host "Checking for old instances..." -ForegroundColor Gray
+$backendProcess = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -First 1
+if ($backendProcess) {
+    Write-Host "Closing old backend process $backendProcess..." -ForegroundColor Yellow
+    Stop-Process -Id $backendProcess -Force -ErrorAction SilentlyContinue
+}
+$frontendProcess = Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -First 1
+if ($frontendProcess) {
+    Write-Host "Closing old frontend process $frontendProcess..." -ForegroundColor Yellow
+    Stop-Process -Id $frontendProcess -Force -ErrorAction SilentlyContinue
+}
+
 Write-Host ""
 Write-Host "[6/6] Starting SlideRefactor..." -ForegroundColor Yellow
 Write-Host ""
@@ -130,7 +142,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Start backend
-$backendJob = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PWD/server'; python -m uvicorn main:app --host 0.0.0.0 --port 8000" -PassThru -WindowStyle Normal
+$backendJob = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PWD'; python -m uvicorn server.main:app --host 0.0.0.0 --port 8000" -PassThru -WindowStyle Normal
 
 Write-Host "Waiting for backend to start..." -ForegroundColor Gray
 Start-Sleep -Seconds 5

@@ -52,11 +52,13 @@ def print_info(text: str):
 def check_command(command: str) -> bool:
     """Check if a command is available in PATH."""
     try:
+        use_shell = platform.system() == "Windows"
         subprocess.run(
             [command, "--version"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            check=True
+            check=True,
+            shell=use_shell
         )
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -65,16 +67,18 @@ def check_command(command: str) -> bool:
 def run_command(command: list, cwd: Optional[Path] = None, quiet: bool = True) -> bool:
     """Run a command and return success status."""
     try:
+        use_shell = platform.system() == "Windows"
         if quiet:
             subprocess.run(
                 command,
                 cwd=cwd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                check=True
+                check=True,
+                shell=use_shell
             )
         else:
-            subprocess.run(command, cwd=cwd, check=True)
+            subprocess.run(command, cwd=cwd, check=True, shell=use_shell)
         return True
     except subprocess.CalledProcessError:
         return False
@@ -156,8 +160,8 @@ def check_configuration():
         env_file.write_text(env_example.read_text())
         print()
         print_warning("IMPORTANT: Please edit .env and add your API keys:")
-        print_info("  - DATALAB_API_KEY")
-        print_info("  - ANTHROPIC_API_KEY")
+        print_info("  - DATALAB_API_KEY (for PDF extraction)")
+        print_info("  - GEMINI_API_KEY (for AI processing)")
         print()
 
         # Try to open in default editor
@@ -172,6 +176,46 @@ def check_configuration():
         print()
 
     print_success("Configuration OK!")
+
+def cleanup_old_instances():
+    """Clean up old instances running on our ports."""
+    print_header("Checking for old instances...")
+    
+    ports = [8000, 3001]
+    system = platform.system()
+    
+    for port in ports:
+        try:
+            if system == "Windows":
+                # Find PID using netstat
+                # Filter by port and typical listening indicators (0.0.0.0 or [::]) to be language-independent
+                cmd = f'netstat -aon | findstr :{port}'
+                output = subprocess.check_output(cmd, shell=True).decode()
+                for line in output.splitlines():
+                    # We look for lines containing 0.0.0.0:PORT or [::]:PORT which are standard for listening sockets
+                    if f":{port}" in line and ("0.0.0.0" in line or "[::]" in line or "127.0.0.1" in line):
+                        parts = line.strip().split()
+                        if len(parts) >= 5:
+                            pid = parts[-1]
+                            if pid != "0":
+                                print(f"  Closing old process {pid} on port {port}...")
+                                subprocess.run(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                # Unix/Mac
+                # lsof -ti:PORT returns the PID
+                try:
+                    pids = subprocess.check_output(["lsof", "-t", f"-i:{port}"], stderr=subprocess.DEVNULL).decode().split()
+                    for pid in pids:
+                        if pid:
+                            print(f"  Closing old process {pid} on port {port}...")
+                            subprocess.run(["kill", "-9", pid], stderr=subprocess.DEVNULL)
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    # lsof not found or no process on port
+                    pass
+        except Exception:
+            pass
+    
+    print_success("Port cleanup complete!")
 
 def start_servers():
     """Start backend and frontend servers."""
@@ -188,7 +232,7 @@ def start_servers():
         sys.executable,
         "-m",
         "uvicorn",
-        "main:app",
+        "server.main:app",
         "--host",
         "0.0.0.0",
         "--port",
@@ -198,7 +242,7 @@ def start_servers():
     print("Starting backend server...")
     backend_process = subprocess.Popen(
         backend_cmd,
-        cwd="server",
+        cwd=None,  # Run from project root
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )
@@ -265,6 +309,7 @@ def main():
         install_python_dependencies()
         install_node_dependencies()
         check_configuration()
+        cleanup_old_instances()
         start_servers()
     except KeyboardInterrupt:
         print()
